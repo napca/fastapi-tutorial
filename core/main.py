@@ -1,9 +1,12 @@
 import random
+from typing import List
 
-from fastapi import Body, FastAPI, HTTPException, Response, status
+from fastapi import Body, FastAPI, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
+from schemas import ExpenseCreateSchema, ExpenseEditSchema, ExpenseResponseSchema
 
 app = FastAPI()
-itemsList = {1: {"id": 1, "description": "", "amount": 20.0}}
+itemsList = {1: {"id": 1, "description": "hello there", "amount": 20.0}}
 
 
 @app.get("/")
@@ -11,35 +14,39 @@ async def root():
     return {"message": "Hello World"}
 
 
-@app.get("/expenses")
-async def retrieveExpensesList():
-    return itemsList
+@app.get("/expenses", response_model=List[ExpenseResponseSchema])
+async def retrieveExpensesList(q: str | None = Query(alias="search", default=None)):
+    if q:
+        return [item for item in itemsList.values() if item["description"].find(q) != -1]
+    return itemsList.values()
 
 
-@app.get("/expenses/{item_id}")
+@app.get("/expenses/{item_id}", response_model=ExpenseResponseSchema)
 async def readExpense(item_id: int):
     if item_id not in itemsList:
         raise HTTPException(status_code=404, detail="item not found.")
     return itemsList[item_id]
 
 
-@app.post(("/expenses"))
-async def addExpense(amount: float = Body(), description: str | None = Body(None)):
+@app.post("/expenses", response_model=ExpenseResponseSchema)
+async def addExpense(item: ExpenseCreateSchema):
     id = 1
+    expense_data = item.model_dump()
     while id in itemsList:
         id = random.randint(1, 1000)
-    itemsList[id] = {"id": id, "description": description, "amount": amount}
-    return itemsList[id]
+        expense_data["id"] = id
+    itemsList[id] = expense_data
+    return JSONResponse(content=itemsList[id], status_code=status.HTTP_201_CREATED)
 
 
-@app.put("/expenses/{item_id}")
+@app.put("/expenses/{item_id}", response_model=ExpenseResponseSchema)
 async def changeExpense(
-    item_id: int, amount: float = Body(), description: str | None = Body(None)
+        item_id: int, item:ExpenseEditSchema
 ):
     if item_id not in itemsList:
         raise HTTPException(status_code=404, detail="item not found.")
-    itemsList[item_id]["description"] = description
-    itemsList[item_id]["amount"] = amount
+    update_data = item.model_dump(exclude_unset=True)
+    itemsList[item_id].update(update_data)
     return itemsList[item_id]
 
 
